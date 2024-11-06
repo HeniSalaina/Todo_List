@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Posts Dashboard</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- Alpine.js and Axios -->
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+</head>
+<body class="bg-light">
+    <div x-data="postApp()" class="container my-5">
+        <h1 class="text-center text-primary mb-5">Post Management</h1>
+
+        <!-- Notification Animation -->
+        <div x-show="showNotification" x-transition.duration.500ms x-text="notificationMessage" class="alert alert-success text-center" role="alert" @click="showNotification = false"></div>
+
+        <!-- Form to Add or Edit a Post -->
+        <div class="card mb-5 shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h2 class="h5 mb-0" x-text="isEditing ? 'Edit Post' : 'Add New Post'"></h2>
+            </div>
+            <div class="card-body">
+                <form @submit.prevent="isEditing ? updatePost() : createPost()">
+                    <div class="mb-3">
+                        <label class="form-label">Post Title</label>
+                        <input type="text" x-model="currentPost.nama_kegiatan" placeholder="Post Title" required class="form-control"/>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Category</label>
+                        <select x-model="currentPost.category" required class="form-select">
+                            <option value="">Select Category</option>
+                            <option value="personal">Personal</option>
+                            <option value="work">Work</option>
+                            <option value="study">Study</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Deadline</label>
+                        <input type="date" x-model="currentPost.deadline" required class="form-control"/>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Priority</label>
+                        <input type="number" x-model="currentPost.priority" min="1" max="5" placeholder="Priority" required class="form-control"/>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Status</label>
+                        <select x-model="currentPost.status" required class="form-select">
+                            <option value="">Select Status</option>
+                            <option value="pending">Pending</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="completed">Completed</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <textarea x-model="currentPost.description" placeholder="Description" class="form-control"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-success">
+                        <i :class="isEditing ? 'fas fa-save' : 'fas fa-plus-circle'"></i>
+                        <span x-text="isEditing ? 'Save Changes' : 'Add Post'"></span>
+                    </button>
+                    <button type="button" class="btn btn-secondary ms-2" @click="cancelEdit" x-show="isEditing">
+                        <i class="fas fa-times-circle"></i> Cancel
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Post List -->
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h2 class="text-secondary">Posts List</h2>
+            <button @click="fetchPosts" class="btn btn-outline-primary">
+                <i class="fas fa-sync-alt"></i> Refresh List
+            </button>
+        </div>
+        
+        <template x-if="loading">
+            <div class="text-center my-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p>Loading...</p>
+            </div>
+        </template>
+        
+        <template x-for="post in posts" :key="post.id">
+            <div class="card mb-3 shadow-sm">
+                <div class="card-body d-flex align-items-center">
+                    <!-- Checkbox for marking post as completed -->
+                    <input type="checkbox" @change="toggleCompleted(post)" :checked="post.status === 'completed'" class="form-check-input me-3" />
+
+                    <div class="flex-grow-1">
+                        <h3 class="card-title h5" x-text="post.nama_kegiatan"></h3>
+                        <p class="card-text">
+                            <strong>Category:</strong> <span x-text="post.category"></span> <br>
+                            <strong>Deadline:</strong> <span x-text="post.deadline"></span> <br>
+                            <strong>Priority:</strong> <span x-text="post.priority"></span> <br>
+                            <strong>Status:</strong> <span x-text="post.status"></span> <br>
+                            <strong>Description:</strong> <span x-text="post.description || 'No description'"></span>
+                        </p>
+                    </div>
+
+                    <!-- Edit and Delete Buttons -->
+                    <button @click="editPost(post)" class="btn btn-warning btn-sm me-2">
+                        <i class="fas fa-edit"></i> Edit
+                    </button>
+                    <button @click="deletePost(post.id)" class="btn btn-danger btn-sm">
+                        <i class="fas fa-trash-alt"></i> Delete
+                    </button>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <script>
+        function postApp() {
+            return {
+                posts: [],
+                currentPost: {
+                    nama_kegiatan: '',
+                    category: '',
+                    deadline: '',
+                    priority: '',
+                    status: '',
+                    description: ''
+                },
+                loading: false,
+                isEditing: false,
+                showNotification: false,
+                notificationMessage: '',
+
+                // Fetch all posts
+                fetchPosts() {
+                    this.loading = true;
+                    axios.get('http://127.0.0.1:8000/api/posts')
+                        .then(response => {
+                            this.posts = response.data.data;
+                        })
+                        .catch(error => {
+                            console.error("Error fetching posts:", error);
+                        })
+                        .finally(() => {
+                            this.loading = false;
+                        });
+                },
+
+                // Create a new post
+                createPost() {
+                    axios.post('http://127.0.0.1:8000/api/posts', this.currentPost)
+                        .then(response => {
+                            this.posts.push(response.data.data);
+                            this.resetCurrentPost();
+                            this.showNotificationMessage('Post created successfully!');
+                        })
+                        .catch(error => {
+                            console.error("Error creating post:", error);
+                        });
+                },
+
+                // Update an existing post
+                updatePost() {
+                    axios.put(`http://127.0.0.1:8000/api/posts/${this.currentPost.id}`, this.currentPost)
+                        .then(response => {
+                            const index = this.posts.findIndex(post => post.id === this.currentPost.id);
+                            if (index !== -1) {
+                                this.posts[index] = response.data.data;
+                            }
+                            this.resetCurrentPost();
+                            this.showNotificationMessage('Post updated successfully!');
+                        })
+                        .catch(error => {
+                            console.error("Error updating post:", error);
+                        });
+                },
+
+                // Delete a post
+                deletePost(id) {
+                    axios.delete(`http://127.0.0.1:8000/api/posts/${id}`)
+                        .then(response => {
+                            this.posts = this.posts.filter(post => post.id !== id);
+                            this.showNotificationMessage('Post deleted successfully!');
+                        })
+                        .catch(error => {
+                            console.error("Error deleting post:", error);
+                        });
+                },
+
+                // Toggle post as completed or pending
+                toggleCompleted(post) {
+                    post.status = post.status === 'completed' ? 'pending' : 'completed';
+                    axios.put(`http://127.0.0.1:8000/api/posts/${post.id}`, post)
+                        .then(() => {
+                            this.showNotificationMessage('Post status updated!');
+                        })
+                        .catch(error => {
+                            console.error("Error updating post status:", error);
+                        });
+                },
+
+                // Show notification message
+                showNotificationMessage(message) {
+                    this.notificationMessage = message;
+                    this.showNotification = true;
+                    setTimeout(() => this.showNotification = false, 2000); // Hide after 2 seconds
+                },
+
+                // Reset form and exit edit mode
+                resetCurrentPost() {
+                    this.currentPost = {
+                        nama_kegiatan: '',
+                        category: '',
+                        deadline: '',
+                        priority: '',
+                        status: '',
+                        description: ''
+                    };
+                    this.isEditing = false;
+                },
+
+                // Prepare to edit a post
+                editPost(post) {
+                    this.isEditing = true;
+                    this.currentPost = { ...post };
+                },
+
+                // Cancel edit mode
+                cancelEdit() {
+                    this.resetCurrentPost();
+                }
+            }
+        }
+    </script>
+
+    <!-- Bootstrap JS (optional) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
